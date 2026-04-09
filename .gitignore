@@ -34,3 +34,18 @@ coverage.txt
 /.editorconfig
 
 dev.env
+
+# chaink8s compiled binaries
+/build/
+/bin/
+/ck8s-monitor
+/ck8s-test
+/phantom-gpu-plugin
+/phantom-webhook
+
+# backups
+*.bak
+*.backup
+
+# local chain test data
+/mytestnet/

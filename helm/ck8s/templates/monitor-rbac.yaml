@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ck8s-monitor
+  namespace: ck8s
+---
+# ClusterRole：管理用户 Pod + 读取节点资源
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ck8s-monitor
+rules:
+  # 创建/查询/删除用户工作负载 Pod
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "create", "delete", "watch"]
+  # 读取节点 allocatable 资源
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ck8s-monitor
+subjects:
+  - kind: ServiceAccount
+    name: ck8s-monitor
+    namespace: ck8s
+roleRef:
+  kind: ClusterRole
+  name: ck8s-monitor
+  apiGroup: rbac.authorization.k8s.io

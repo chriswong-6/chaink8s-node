@@ -68,6 +68,8 @@ import (
 	providertypes "pkg.akt.dev/go/node/provider/v1beta4"
 	taketypes "pkg.akt.dev/go/node/take/v1"
 
+	"pkg.akt.dev/node/x/chaink8s"
+
 	apptypes "pkg.akt.dev/node/app/types"
 	utypes "pkg.akt.dev/node/upgrades/types"
 	// unnamed import of statik for swagger UI support
@@ -289,6 +291,7 @@ func orderBeginBlockers(_ []string) []string {
 		ibctm.ModuleName,
 		ibchost.ModuleName,
 		feegrant.ModuleName,
+		chaink8s.ModuleName,
 	}
 }
 
@@ -318,6 +321,7 @@ func OrderEndBlockers(_ []string) []string {
 		transfertypes.ModuleName,
 		ibchost.ModuleName,
 		feegrant.ModuleName,
+		chaink8s.ModuleName,
 	}
 }
 

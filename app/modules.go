@@ -34,6 +34,7 @@ import (
 
 	"pkg.akt.dev/node/x/audit"
 	"pkg.akt.dev/node/x/cert"
+	"pkg.akt.dev/node/x/chaink8s"
 	"pkg.akt.dev/node/x/deployment"
 	"pkg.akt.dev/node/x/escrow"
 	"pkg.akt.dev/node/x/market"
@@ -189,6 +190,12 @@ func appModules(
 		cert.NewAppModule(
 			app.cdc,
 			app.Keepers.Akash.Cert,
+		),
+		chaink8s.NewAppModule(
+			app.cdc,
+			app.Keepers.Akash.ChainK8s,
+			app.Keepers.Akash.Market,
+			app.Keepers.Akash.Provider,
 		),
 	}
 }

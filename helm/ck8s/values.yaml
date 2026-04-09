@@ -1,0 +1,35 @@
+# 使用标准基础镜像 + hostPath 挂载本机已编译的二进制，无需 docker build
+image:
+  repository: ubuntu
+  tag: noble
+  pullPolicy: IfNotPresent
+
+# 本机已编译二进制的目录（helm install 前先 go build）
+buildPath: /home/lmdrive/node/build
+
+# ── akash 链节点 ──────────────────────────────────────────────────────────────
+akash:
+  chainID: local-test
+  # 宿主机上已初始化好的链数据目录，挂载进容器
+  hostDataPath: /home/lmdrive/.akash-local
+  resources: {}
+
+# ── ck8s-monitor ──────────────────────────────────────────────────────────────
+monitor:
+  providerAddr: ""       # 必填：Provider bech32 地址，如 akash1yd9...
+  nodeID: node-1         # 链上逻辑节点 ID
+  k8sNodeName: lmdrive   # kubectl get nodes 里的节点名
+  keyName: mykey
+  keyringBackend: test
+  heartbeat: 30s
+  podNamespace: default  # 用户工作负载 Pod 创建在哪个 namespace
+  defaultImage: nginx:alpine
+  resources: {}
+
+# ── ck8s-query HTTP API ───────────────────────────────────────────────────────
+query:
+  port: 8080
+  service:
+    type: ClusterIP   # 改成 NodePort 可从集群外访问
+    nodePort: ""      # type=NodePort 时填端口号，如 30080
+  resources: {}

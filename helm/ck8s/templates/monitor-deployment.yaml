@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ck8s-monitor
+  namespace: ck8s
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ck8s-monitor
+  template:
+    metadata:
+      labels:
+        app: ck8s-monitor
+    spec:
+      serviceAccountName: ck8s-monitor
+      initContainers:
+        - name: wait-akash-grpc
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z akash.ck8s.svc.cluster.local 9190; do
+                echo "waiting for akash gRPC..."; sleep 3
+              done
+              echo "akash gRPC ready"
+      containers:
+        - name: monitor
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /usr/local/bin/ck8s-monitor
+            - --rpc=http://akash.ck8s.svc.cluster.local:26657
+            - --grpc=akash.ck8s.svc.cluster.local:9190
+            - --rest=http://akash.ck8s.svc.cluster.local:1317
+            - --chain-id={{ .Values.akash.chainID }}
+            - --provider={{ .Values.monitor.providerAddr }}
+            - --node-id={{ .Values.monitor.nodeID }}
+            - --k8s-node={{ .Values.monitor.k8sNodeName }}
+            - --key-name={{ .Values.monitor.keyName }}
+            - --keyring-dir=/keyring
+            - --keyring-backend={{ .Values.monitor.keyringBackend }}
+            - --heartbeat={{ .Values.monitor.heartbeat }}
+            - --namespace={{ .Values.monitor.podNamespace }}
+            - --image={{ .Values.monitor.defaultImage }}
+          volumeMounts:
+            - name: binary
+              mountPath: /usr/local/bin/ck8s-monitor
+            - name: keyring
+              mountPath: /keyring
+              readOnly: true
+            - name: nvidia-smi
+              mountPath: /usr/bin/nvidia-smi
+            - name: nvidia-libs
+              mountPath: /usr/lib/x86_64-linux-gnu
+          resources: {{ toYaml .Values.monitor.resources | nindent 12 }}
+      volumes:
+        - name: binary
+          hostPath:
+            path: {{ .Values.buildPath }}/ck8s-monitor
+            type: File
+        - name: keyring
+          hostPath:
+            path: {{ .Values.akash.hostDataPath }}
+            type: Directory
+        - name: nvidia-smi
+          hostPath:
+            path: /usr/bin/nvidia-smi
+            type: File
+        - name: nvidia-libs
+          hostPath:
+            path: /usr/lib/x86_64-linux-gnu
+            type: Directory

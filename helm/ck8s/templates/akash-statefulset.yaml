@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: akash
+  namespace: ck8s
+spec:
+  serviceName: akash
+  replicas: 1
+  selector:
+    matchLabels:
+      app: akash
+  template:
+    metadata:
+      labels:
+        app: akash
+    spec:
+      containers:
+        - name: akash
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/akash", "start", "--home", "/home/akash"]
+          ports:
+            - name: p2p
+              containerPort: 26656
+            - name: rpc
+              containerPort: 26657
+            - name: rest
+              containerPort: 1317
+            - name: grpc
+              containerPort: 9190
+          volumeMounts:
+            - name: chain-data
+              mountPath: /home/akash
+            - name: binary
+              mountPath: /usr/local/bin/akash
+          resources: {{ toYaml .Values.akash.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 26657
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: chain-data
+          hostPath:
+            path: {{ .Values.akash.hostDataPath }}
+            type: Directory
+        - name: binary
+          hostPath:
+            path: {{ .Values.buildPath }}/akash
+            type: File

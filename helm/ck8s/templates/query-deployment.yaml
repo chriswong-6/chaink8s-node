@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ck8s-query
+  namespace: ck8s
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ck8s-query
+  template:
+    metadata:
+      labels:
+        app: ck8s-query
+    spec:
+      containers:
+        - name: query
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /usr/local/bin/ck8s-query
+            - serve
+            - --grpc
+            - akash.ck8s.svc.cluster.local:9190
+            - --port
+            - "{{ .Values.query.port }}"
+          volumeMounts:
+            - name: binary
+              mountPath: /usr/local/bin/ck8s-query
+          ports:
+            - name: http
+              containerPort: {{ .Values.query.port }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.query.port }}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources: {{ toYaml .Values.query.resources | nindent 12 }}
+      volumes:
+        - name: binary
+          hostPath:
+            path: {{ .Values.buildPath }}/ck8s-query
+            type: File

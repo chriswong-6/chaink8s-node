@@ -70,6 +70,7 @@ import (
 	"pkg.akt.dev/go/sdkutil"
 
 	akeeper "pkg.akt.dev/node/x/audit/keeper"
+	ck8skeeper "pkg.akt.dev/node/x/chaink8s/keeper"
 	ckeeper "pkg.akt.dev/node/x/cert/keeper"
 	dkeeper "pkg.akt.dev/node/x/deployment/keeper"
 	ekeeper "pkg.akt.dev/node/x/escrow/keeper"
@@ -113,6 +114,7 @@ type AppKeepers struct {
 		Provider   pkeeper.IKeeper
 		Audit      akeeper.Keeper
 		Cert       ckeeper.Keeper
+		ChainK8s   ck8skeeper.IKeeper
 	}
 
 	Modules struct {
@@ -449,6 +451,11 @@ func (app *App) InitNormalKeepers(
 		cdc,
 		app.keys[ctypes.StoreKey],
 	)
+
+	app.Keepers.Akash.ChainK8s = ck8skeeper.NewKeeper(
+		cdc,
+		app.keys["chaink8s"],
+	)
 }
 
 func (app *App) SetupHooks() {
@@ -538,6 +545,7 @@ func akashKVStoreKeys() []string {
 		ptypes.StoreKey,
 		atypes.StoreKey,
 		ctypes.StoreKey,
+		"chaink8s",
 	}
 }
 

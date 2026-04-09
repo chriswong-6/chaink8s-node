@@ -26,6 +26,7 @@ import (
 
 	"pkg.akt.dev/node/x/audit"
 	"pkg.akt.dev/node/x/cert"
+	"pkg.akt.dev/node/x/chaink8s"
 	"pkg.akt.dev/node/x/deployment"
 	"pkg.akt.dev/node/x/escrow"
 	"pkg.akt.dev/node/x/market"
@@ -42,6 +43,7 @@ func akashModuleBasics() []module.AppModuleBasic {
 		provider.AppModuleBasic{},
 		audit.AppModuleBasic{},
 		cert.AppModuleBasic{},
+		chaink8s.AppModuleBasic{},
 	}
 }
 
@@ -77,6 +79,7 @@ func OrderInitGenesis(_ []string) []string {
 		deployment.ModuleName,
 		provider.ModuleName,
 		market.ModuleName,
+		chaink8s.ModuleName,
 		genutiltypes.ModuleName,
 	}
 }
