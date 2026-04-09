@@ -18,7 +18,7 @@ spec:
         - name: akash
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/usr/local/bin/akash", "start", "--home", "/home/akash"]
+          command: ["akash", "start", "--home", "/home/akash"]
           ports:
             - name: p2p
               containerPort: 26656
@@ -31,8 +31,6 @@ spec:
           volumeMounts:
             - name: chain-data
               mountPath: /home/akash
-            - name: binary
-              mountPath: /usr/local/bin/akash
           resources: {{ toYaml .Values.akash.resources | nindent 12 }}
           readinessProbe:
             httpGet:
@@ -45,7 +43,3 @@ spec:
           hostPath:
             path: {{ .Values.akash.hostDataPath }}
             type: Directory
-        - name: binary
-          hostPath:
-            path: {{ .Values.buildPath }}/akash
-            type: File

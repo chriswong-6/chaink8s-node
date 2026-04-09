@@ -31,14 +31,11 @@ ck8s-query (HTTP API)
 
 ## Deploy on a New Machine
 
-### 1. Clone and build
+### 1. Add Helm repo
 
 ```bash
-git clone https://github.com/chriswong-6/chaink8s-node.git
-cd chaink8s-node
-go build -o build/akash        ./cmd/akash
-go build -o build/ck8s-monitor ./cmd/ck8s-monitor
-go build -o build/ck8s-query   ./cmd/ck8s-query
+helm repo add chaink8s https://chriswong-6.github.io/chaink8s-node
+helm repo update
 ```
 
 ### 2. Initialize the Akash chain (first time only)
@@ -76,9 +73,9 @@ PROVIDER_ADDR=$(./build/akash keys show mykey -a \
 ### 4. Deploy all components to Kubernetes
 
 ```bash
-helm install ck8s ./helm/ck8s \
+helm install ck8s chaink8s/ck8s \
   --set monitor.providerAddr=$PROVIDER_ADDR \
-  --set monitor.k8sNodeName=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+  --set akash.hostDataPath=$HOME/.akash-local
 ```
 
 ### 5. Verify
