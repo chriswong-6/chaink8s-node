@@ -72,8 +72,10 @@ jobs:
           sed -i "s|repository: .*|repository: ghcr.io/${{ github.repository }}|" helm/ck8s/values.yaml
           sed -i "s|tag: .*|tag: main|" helm/ck8s/values.yaml
 
-      - name: Package Helm chart
-        run: helm package helm/ck8s --destination /tmp/helm-pkg
+      - name: Configure git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
       - name: Publish to GitHub Pages (helm repo)
         uses: helm/chart-releaser-action@v1.6.0
