@@ -121,10 +121,10 @@ docker run --rm -v $CHAIN_HOME:/home/akash \
 ## Step 3: Deploy with Helm
 
 ```bash
-helm repo add chaink8s https://chriswong-6.github.io/chaink8s-node
+helm repo add cfaas https://chriswong-6.github.io/CFaaS
 helm repo update
 
-helm install ck8s chaink8s/ck8s \
+helm install ck8s cfaas/ck8s \
   --namespace ck8s --create-namespace \
   --set akash.hostDataPath=/root/.akash-local \
   --set akash.chainID=local-test \
