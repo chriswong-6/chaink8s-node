@@ -12,7 +12,44 @@ The `chaink8s` module lets GPU/CPU providers register nodes on-chain, schedule w
 | `ck8s-monitor` | Runs on each K8s node; sends heartbeats and manages Pods |
 | `ck8s-query` | HTTP API to query available CPU/GPU resources |
 
-## Deploy with Helm
+## Step 1: Initialize Chain Data (once per machine)
+
+Run these on the host machine before deploying. The data directory is mounted into the K8s pod via hostPath.
+
+```bash
+# Pull the akash binary from our image to run init commands
+docker run --rm -v /root/.akash-local:/home/akash \
+  ghcr.io/chriswong-6/chaink8s-node:main \
+  akash init mynode --chain-id local-test --home /home/akash
+
+# Create a key (save the mnemonic!)
+docker run --rm -v /root/.akash-local:/home/akash \
+  ghcr.io/chriswong-6/chaink8s-node:main \
+  akash keys add mykey --home /home/akash --keyring-backend test
+
+# Fund the account in genesis
+ADDR=$(docker run --rm -v /root/.akash-local:/home/akash \
+  ghcr.io/chriswong-6/chaink8s-node:main \
+  akash keys show mykey -a --home /home/akash --keyring-backend test)
+
+docker run --rm -v /root/.akash-local:/home/akash \
+  ghcr.io/chriswong-6/chaink8s-node:main \
+  akash genesis add-genesis-account $ADDR 10000000000uakt --home /home/akash
+
+docker run --rm -v /root/.akash-local:/home/akash \
+  ghcr.io/chriswong-6/chaink8s-node:main \
+  akash genesis gentx mykey 1000000uakt --chain-id local-test --home /home/akash --keyring-backend test
+
+docker run --rm -v /root/.akash-local:/home/akash \
+  ghcr.io/chriswong-6/chaink8s-node:main \
+  akash genesis collect-gentxs --home /home/akash
+
+# Register as provider (save the address printed here)
+PROVIDER_ADDR=$ADDR
+echo "Provider address: $PROVIDER_ADDR"
+```
+
+## Step 2: Deploy with Helm
 
 **Prerequisites:** K8s cluster, `kubectl`, `helm`
 
