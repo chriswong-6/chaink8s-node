@@ -150,13 +150,16 @@ func (am AppModule) runScheduler(ctx sdk.Context) {
 			return false // continue
 		}
 
-		// 跳过已调度的 Order（幂等保证）
+		// 已调度的 Order：确保 market 层 order 状态为 closed（幂等，兼容旧绑定记录）
 		if am.keeper.IsOrderBound(ctx, orderID) {
+			if err := am.mkeeper.OnOrderClosed(ctx, order); err != nil {
+				ctx.Logger().Error("chaink8s: OnOrderClosed (already bound) failed", "order", orderID, "err", err)
+			}
 			return false // continue
 		}
 
 		reqCPU, reqMem, reqGPU, reqGPUCore, reqGPUMemMB, image := extractResources(order.Spec)
-		am.scheduleOrder(ctx, orderID, reqCPU, reqMem, reqGPU, reqGPUCore, reqGPUMemMB, image)
+		am.scheduleOrder(ctx, order, reqCPU, reqMem, reqGPU, reqGPUCore, reqGPUMemMB, image)
 		return false // continue to next order
 	})
 }
@@ -212,7 +215,9 @@ func extractResources(spec dtypesv1beta4.GroupSpec) (cpu, mem, gpu, gpuCore, gpu
 }
 
 // scheduleOrder 为单个 Order 执行调度并建立 Lease
-func (am AppModule) scheduleOrder(ctx sdk.Context, orderID string, reqCPU, reqMem, reqGPU, reqGPUCore, reqGPUMemMB int64, image string) {
+func (am AppModule) scheduleOrder(ctx sdk.Context, order mv1beta5.Order, reqCPU, reqMem, reqGPU, reqGPUCore, reqGPUMemMB int64, image string) {
+	orderID := order.ID.String()
+
 	bestNode, found := am.keeper.SelectBestNode(ctx, reqCPU, reqMem, reqGPU, reqGPUCore, reqGPUMemMB)
 	if !found {
 		return // 无满足条件节点，等下一块
@@ -234,6 +239,12 @@ func (am AppModule) scheduleOrder(ctx sdk.Context, orderID string, reqCPU, reqMe
 
 	// 标记该 Order 已绑定（记录 provider+nodeID+资源需求+镜像，供 Monitor 重建 Pod spec）
 	am.keeper.SetOrderBound(ctx, orderID, bestNode.Provider, bestNode.NodeID, reqCPU, reqMem, reqGPU, reqGPUCore, reqGPUMemMB, image)
+
+	// 将 order 状态置为 closed（chaink8s 不走 bid/lease 流程，由调度器直接 close）
+	// 这确保 deployment close 后 pending_orders 正确归零，以及 spot price 正确反映需求
+	if err := am.mkeeper.OnOrderClosed(ctx, order); err != nil {
+		ctx.Logger().Error("chaink8s: OnOrderClosed failed", "order", orderID, "err", err)
+	}
 
 	// 发出调度事件，携带资源需求和镜像供 Monitor 构建 Pod spec
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
