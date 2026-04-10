@@ -96,6 +96,7 @@ func buildFileDescriptorProto() *descriptorpb.FileDescriptorProto {
 					field("free_mem", 4, descriptorpb.FieldDescriptorProto_TYPE_INT64),
 					field("free_gpu", 5, descriptorpb.FieldDescriptorProto_TYPE_INT64),
 					field("free_gpu_mem_mb", 6, descriptorpb.FieldDescriptorProto_TYPE_INT64),
+					field("free_gpu_core", 7, descriptorpb.FieldDescriptorProto_TYPE_INT64),
 				},
 			},
 			{Name: proto.String("MsgNodeHeartbeatResponse")},

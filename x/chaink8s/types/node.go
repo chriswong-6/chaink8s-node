@@ -123,11 +123,12 @@ type MsgNodeHeartbeat struct {
 	FreeMem      int64  `protobuf:"varint,4,opt,name=free_mem,json=freeMem,proto3" json:"free_mem,omitempty"`
 	FreeGPU      int64  `protobuf:"varint,5,opt,name=free_gpu,json=freeGpu,proto3" json:"free_gpu,omitempty"`
 	FreeGPUMemMB int64  `protobuf:"varint,6,opt,name=free_gpu_mem_mb,json=freeGpuMemMb,proto3" json:"free_gpu_mem_mb,omitempty"`
+	FreeGPUCore  int64  `protobuf:"varint,7,opt,name=free_gpu_core,json=freeGpuCore,proto3" json:"free_gpu_core,omitempty"`
 }
 
 var _ sdk.Msg = &MsgNodeHeartbeat{}
 
-func NewMsgNodeHeartbeat(provider sdk.AccAddress, nodeID string, cpu, mem, gpu, gpuMemMB int64) *MsgNodeHeartbeat {
+func NewMsgNodeHeartbeat(provider sdk.AccAddress, nodeID string, cpu, mem, gpu, gpuMemMB, gpuCore int64) *MsgNodeHeartbeat {
 	return &MsgNodeHeartbeat{
 		Provider:     provider.String(),
 		NodeID:       nodeID,
@@ -135,6 +136,7 @@ func NewMsgNodeHeartbeat(provider sdk.AccAddress, nodeID string, cpu, mem, gpu, 
 		FreeMem:      mem,
 		FreeGPU:      gpu,
 		FreeGPUMemMB: gpuMemMB,
+		FreeGPUCore:  gpuCore,
 	}
 }
 

@@ -64,16 +64,22 @@ func (s *MsgServer) HandleNodeHeartbeat(goCtx context.Context, msg *types.MsgNod
 		}
 		res.AllocCPU = existing.AllocCPU
 		res.AllocMem = existing.AllocMem
-		// GPU 物理数量不变：保留已分配后的 FreeGPUCore
-		if msg.FreeGPU == existing.FreeGPU {
+		// 若心跳直接上报 FreeGPUCore（由 monitor 从 Koordinator 读取），优先使用
+		if msg.FreeGPUCore > 0 {
+			res.FreeGPUCore = msg.FreeGPUCore
+		} else if msg.FreeGPU == existing.FreeGPU {
 			res.FreeGPUCore = existing.FreeGPUCore
 		} else {
 			// GPU 数量变化（热插拔），重新初始化
 			res.FreeGPUCore = msg.FreeGPU * 100
 		}
 	} else {
-		// 首次注册：初始化 FreeGPUCore = 物理 GPU 数量 × 100
-		res.FreeGPUCore = msg.FreeGPU * 100
+		// 首次注册：优先使用 FreeGPUCore，否则从整块 GPU 数推算
+		if msg.FreeGPUCore > 0 {
+			res.FreeGPUCore = msg.FreeGPUCore
+		} else {
+			res.FreeGPUCore = msg.FreeGPU * 100
+		}
 	}
 
 	s.keeper.SetNodeResource(ctx, providerAddr, res)

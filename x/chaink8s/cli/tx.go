@@ -48,13 +48,14 @@ func getCmdTxNodeHeartbeat() *cobra.Command {
 			mem, _ := cmd.Flags().GetInt64("mem")
 			gpu, _ := cmd.Flags().GetInt64("gpu")
 			gpuMemMB, _ := cmd.Flags().GetInt64("gpu-mem-mb")
+			gpuCore, _ := cmd.Flags().GetInt64("gpu-core")
 
 			providerAddr, err := sdk.AccAddressFromBech32(providerStr)
 			if err != nil {
 				return fmt.Errorf("invalid provider address: %w", err)
 			}
 
-			msg := types.NewMsgNodeHeartbeat(providerAddr, nodeID, cpu, mem, gpu, gpuMemMB)
+			msg := types.NewMsgNodeHeartbeat(providerAddr, nodeID, cpu, mem, gpu, gpuMemMB, gpuCore)
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
@@ -65,6 +66,7 @@ func getCmdTxNodeHeartbeat() *cobra.Command {
 	cmd.Flags().Int64("mem", 0, "Available memory in bytes")
 	cmd.Flags().Int64("gpu", 0, "Number of available GPUs")
 	cmd.Flags().Int64("gpu-mem-mb", 0, "Available GPU memory in MiB")
+	cmd.Flags().Int64("gpu-core", 0, "Available GPU core units (Koordinator, 100=1 GPU)")
 	_ = cmd.MarkFlagRequired("provider")
 	_ = cmd.MarkFlagRequired("node-id")
 

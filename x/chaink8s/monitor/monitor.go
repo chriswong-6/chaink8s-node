@@ -237,11 +237,11 @@ func (m *Monitor) Run(ctx context.Context) error {
 // ── Heartbeat ────────────────────────────────────────────────────────────────
 
 func (m *Monitor) sendHeartbeat(ctx context.Context) {
-	cpu, mem, gpu, gpuMemMB := m.readNodeResources(ctx)
+	cpu, mem, gpu, gpuMemMB, gpuCore := m.readNodeResources(ctx)
 	msg := ck8stypes.NewMsgNodeHeartbeat(
 		mustAccAddr(m.cfg.ProviderAddr),
 		m.cfg.NodeID,
-		cpu, mem, gpu, gpuMemMB,
+		cpu, mem, gpu, gpuMemMB, gpuCore,
 	)
 
 	// Sync sequence from chain before signing
@@ -260,7 +260,7 @@ func (m *Monitor) sendHeartbeat(ctx context.Context) {
 	}
 	// Optimistically increment local sequence for the next tx
 	m.factory = m.factory.WithSequence(m.factory.Sequence() + 1)
-	log.Printf("INF monitor: heartbeat ok  txhash=%.12s  cpu=%d  mem=%d  gpu=%d  gpu_mem=%dMi", txhash, cpu, mem, gpu, gpuMemMB)
+	log.Printf("INF monitor: heartbeat ok  txhash=%.12s  cpu=%d  mem=%d  gpu=%d  gpu_core=%d  gpu_mem=%dMi", txhash, cpu, mem, gpu, gpuCore, gpuMemMB)
 }
 
 // ── Chain event handling ──────────────────────────────────────────────────────
@@ -663,7 +663,7 @@ func (m *Monitor) refreshSequence() {
 // GPU 信息直接从 koordinator 扩展资源读取，不依赖 nvidia-smi：
 //   koordinator.sh/gpu         → GPU 总 core 单位（100 = 1块GPU）
 //   koordinator.sh/gpu-memory  → GPU 总显存（如 "24564Mi"）
-func (m *Monitor) readNodeResources(ctx context.Context) (cpuMilli, memBytes, gpuCount, gpuMemMB int64) {
+func (m *Monitor) readNodeResources(ctx context.Context) (cpuMilli, memBytes, gpuCount, gpuMemMB, gpuCore int64) {
 	// ── 1. 获取 K8s 节点 allocatable ───────────────────────────────────────
 	node, err := m.k8s.CoreV1().Nodes().Get(ctx, m.cfg.K8sNodeName, metav1.GetOptions{})
 	if err != nil {
@@ -675,16 +675,7 @@ func (m *Monitor) readNodeResources(ctx context.Context) (cpuMilli, memBytes, gp
 	allocCPU := node.Status.Allocatable.Cpu().MilliValue()
 	allocMem := node.Status.Allocatable.Memory().Value()
 
-	// ── 2. GPU：从 koordinator 扩展资源读取（不需要 nvidia-smi）────────────
-	if gpuCoreQ, ok := node.Status.Allocatable["koordinator.sh/gpu"]; ok {
-		// 100 core 单位 = 1 块物理 GPU
-		gpuCount = gpuCoreQ.Value() / 100
-	}
-	if gpuMemQ, ok := node.Status.Allocatable["koordinator.sh/gpu-memory"]; ok {
-		gpuMemMB = gpuMemQ.Value() / (1024 * 1024) // bytes → MiB
-	}
-
-	// ── 3. 列出本节点所有 Pod，汇总非 chain Pod 的 CPU/Mem requests ─────────
+	// ── 2+3. 列出本节点所有 Pod，汇总非 chain Pod 的资源占用，并计算 GPU 空闲量 ──
 	pods, err := m.k8s.CoreV1().Pods("").List(ctx, metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + m.cfg.K8sNodeName,
 	})
@@ -694,7 +685,16 @@ func (m *Monitor) readNodeResources(ctx context.Context) (cpuMilli, memBytes, gp
 		return
 	}
 
-	var extCPU, extMem int64
+	// 读取 koordinator GPU 总量（core 单位，100=1块GPU）
+	var allocGPUCore, allocGPUMemMB int64
+	if q, ok := node.Status.Allocatable["koordinator.sh/gpu-core"]; ok {
+		allocGPUCore = q.Value()
+	}
+	if q, ok := node.Status.Allocatable["koordinator.sh/gpu-memory"]; ok {
+		allocGPUMemMB = q.Value() / (1024 * 1024)
+	}
+
+	var extCPU, extMem, extGPUCore, extGPUMemMB int64
 	for i := range pods.Items {
 		pod := &pods.Items[i]
 		if strings.HasPrefix(pod.Name, "ck8s-") {
@@ -706,11 +706,30 @@ func (m *Monitor) readNodeResources(ctx context.Context) (cpuMilli, memBytes, gp
 		for _, c := range pod.Spec.Containers {
 			extCPU += c.Resources.Requests.Cpu().MilliValue()
 			extMem += c.Resources.Requests.Memory().Value()
+			if q, ok := c.Resources.Requests["koordinator.sh/gpu-core"]; ok {
+				extGPUCore += q.Value()
+			}
+			if q, ok := c.Resources.Requests["koordinator.sh/gpu-memory"]; ok {
+				extGPUMemMB += q.Value() / (1024 * 1024)
+			}
 		}
 	}
 
-	log.Printf("DBG readNodeResources: node=%s cpu=%dm mem=%dMi gpu=%d gpuMem=%dMi pods=%d",
-		m.cfg.K8sNodeName, allocCPU-extCPU, (allocMem-extMem)>>20, gpuCount, gpuMemMB, len(pods.Items))
+	freeGPUCore := allocGPUCore - extGPUCore
+	if freeGPUCore < 0 {
+		freeGPUCore = 0
+	}
+	freeGPUMemMB := allocGPUMemMB - extGPUMemMB
+	if freeGPUMemMB < 0 {
+		freeGPUMemMB = 0
+	}
+	// gpuCount: 整块 GPU 数（用于整块调度），gpuCore: 可用 core 单位（直接上链）
+	gpuCount = freeGPUCore / 100
+	gpuMemMB = freeGPUMemMB
+	gpuCore = freeGPUCore
+
+	log.Printf("DBG readNodeResources: node=%s cpu=%dm mem=%dMi gpu=%d gpuCore=%d/%d gpuMem=%dMi pods=%d",
+		m.cfg.K8sNodeName, allocCPU-extCPU, (allocMem-extMem)>>20, gpuCount, freeGPUCore, allocGPUCore, gpuMemMB, len(pods.Items))
 
 	cpuMilli = allocCPU - extCPU
 	memBytes = allocMem - extMem
