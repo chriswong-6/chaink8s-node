@@ -2,6 +2,16 @@ apiVersion: v1
 entries:
   ck8s:
   - apiVersion: v2
+    appVersion: 0.7.0
+    created: "2026-04-10T22:23:08.24785525Z"
+    description: ChainK8s — on-chain Kubernetes scheduler for Akash Network
+    digest: 4a2fd496567654119d6284e1b002af4acf55dcf6a837d1df6f3a01da0590a724
+    name: ck8s
+    type: application
+    urls:
+    - https://github.com/chriswong-6/chaink8s-node/releases/download/ck8s-0.7.0/ck8s-0.7.0.tgz
+    version: 0.7.0
+  - apiVersion: v2
     appVersion: 0.6.0
     created: "2026-04-10T22:17:09.493281925Z"
     description: ChainK8s — on-chain Kubernetes scheduler for Akash Network
@@ -21,4 +31,4 @@ entries:
     urls:
     - https://github.com/chriswong-6/chaink8s-node/releases/download/ck8s-0.5.0/ck8s-0.5.0.tgz
     version: 0.5.0
-generated: "2026-04-10T22:17:09.493292902Z"
+generated: "2026-04-10T22:23:08.247870528Z"
