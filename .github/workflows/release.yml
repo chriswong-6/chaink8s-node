@@ -68,9 +68,10 @@ jobs:
 
       - name: Update chart image tag
         run: |
-          IMAGE_TAG=$(echo "${{ needs.docker.outputs.image_tag }}" | head -1)
+          IMAGE_TAG=$(echo "${{ needs.docker.outputs.image_tag }}" | grep -E ':[a-f0-9]{7}$' | head -1 | cut -d: -f2)
+          if [ -z "$IMAGE_TAG" ]; then IMAGE_TAG="${{ github.ref_name }}"; fi
           sed -i "s|repository: .*|repository: ghcr.io/${{ github.repository }}|" helm/ck8s/values.yaml
-          sed -i "s|tag: .*|tag: main|" helm/ck8s/values.yaml
+          sed -i "s|tag: .*|tag: ${IMAGE_TAG}|" helm/ck8s/values.yaml
 
       - name: Configure git
         run: |

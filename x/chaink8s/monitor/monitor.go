@@ -592,15 +592,32 @@ func (m *Monitor) broadcastTx(txBytes []byte) (code int, txhash, rawlog string) 
 	body := fmt.Sprintf(`{"tx_bytes":%q,"mode":"BROADCAST_MODE_SYNC"}`,
 		base64.StdEncoding.EncodeToString(txBytes))
 
-	resp, err := http.Post(m.cfg.NodeREST+"/cosmos/tx/v1beta1/txs",
-		"application/json", bytes.NewBufferString(body))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		m.cfg.NodeREST+"/cosmos/tx/v1beta1/txs",
+		bytes.NewBufferString(body))
+	if err != nil {
+		log.Printf("ERR monitor: broadcast build request: %v", err)
+		return 1, "", err.Error()
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("ERR monitor: broadcast http: %v", err)
 		return 1, "", err.Error()
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
 
+	if resp.StatusCode >= 500 {
+		b, _ := io.ReadAll(resp.Body)
+		log.Printf("ERR monitor: broadcast server error %d: %s", resp.StatusCode, string(b))
+		return 1, "", fmt.Sprintf("server error %d", resp.StatusCode)
+	}
+
+	b, _ := io.ReadAll(resp.Body)
 	var result struct {
 		TxResponse struct {
 			Code   int    `json:"code"`
@@ -608,23 +625,31 @@ func (m *Monitor) broadcastTx(txBytes []byte) (code int, txhash, rawlog string) 
 			RawLog string `json:"raw_log"`
 		} `json:"tx_response"`
 	}
-	json.Unmarshal(b, &result) //nolint:errcheck
+	if err := json.Unmarshal(b, &result); err != nil {
+		log.Printf("ERR monitor: broadcast parse response: %v", err)
+		return 1, "", err.Error()
+	}
 	return result.TxResponse.Code, result.TxResponse.TxHash, result.TxResponse.RawLog
 }
 
 // refreshSequence re-reads the on-chain sequence number so the monitor
 // stays in sync after restarts or failed broadcasts.
 func (m *Monitor) refreshSequence() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	authClient := authtypes.NewQueryClient(m.grpcConn)
-	accResp, err := authClient.Account(context.Background(), &authtypes.QueryAccountRequest{
+	accResp, err := authClient.Account(ctx, &authtypes.QueryAccountRequest{
 		Address: m.cfg.ProviderAddr,
 	})
 	if err != nil {
+		log.Printf("WRN monitor: refreshSequence: %v", err)
 		return
 	}
 	encCfg := makeEncCfg()
 	var baseAcc authtypes.AccountI
 	if err := encCfg.InterfaceRegistry.UnpackAny(accResp.Account, &baseAcc); err != nil {
+		log.Printf("WRN monitor: refreshSequence unpack: %v", err)
 		return
 	}
 	m.factory = m.factory.WithSequence(baseAcc.GetSequence())

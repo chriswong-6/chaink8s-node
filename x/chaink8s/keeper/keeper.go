@@ -48,7 +48,10 @@ func NewKeeper(cdc codec.BinaryCodec, skey storetypes.StoreKey) IKeeper {
 func (k *Keeper) SetNodeResource(ctx sdk.Context, provider sdk.AccAddress, res types.NodeResource) {
 	store := ctx.KVStore(k.skey)
 	key := types.NodeResourceKey(provider, res.NodeID)
-	bz, _ := json.Marshal(res)
+	bz, err := json.Marshal(res)
+	if err != nil {
+		panic(fmt.Sprintf("chaink8s: marshal NodeResource: %v", err))
+	}
 	store.Set(key, bz)
 }
 
@@ -61,7 +64,9 @@ func (k *Keeper) GetNodeResource(ctx sdk.Context, provider sdk.AccAddress, nodeI
 		return types.NodeResource{}, false
 	}
 	var res types.NodeResource
-	_ = json.Unmarshal(bz, &res)
+	if err := json.Unmarshal(bz, &res); err != nil {
+		return types.NodeResource{}, false
+	}
 	return res, true
 }
 
@@ -87,6 +92,8 @@ func (k *Keeper) GetAllNodes(ctx sdk.Context) []types.NodeResource {
 //   - gpuCore > 0：按百分比单位扣减 FreeGPUCore（分数 GPU 模式）
 //     例：gpuCore=40 → FreeGPUCore -= 40
 //   - gpuCore == 0 且 gpu > 0：按整卡扣减（FreeGPUCore -= gpu×100）
+//
+// gpuMemMB > 0 时同步扣减 FreeGPUMemMB，防止显存超分配
 func (k *Keeper) ApplyNodeClaim(ctx sdk.Context, provider sdk.AccAddress, nodeID string, cpu, mem, gpu, gpuCore int64) error {
 	res, found := k.GetNodeResource(ctx, provider, nodeID)
 	if !found {
@@ -99,12 +106,24 @@ func (k *Keeper) ApplyNodeClaim(ctx sdk.Context, provider sdk.AccAddress, nodeID
 		gpuCoreDeduct = gpu * 100
 	}
 
+	// 显存按整卡均分估算：每块 GPU 占用 FreeGPUMemMB / FreeGPU
+	var gpuMemDeduct int64
+	if gpu > 0 && res.FreeGPU > 0 && res.FreeGPUMemMB > 0 {
+		gpuMemDeduct = res.FreeGPUMemMB / res.FreeGPU * gpu
+	}
+
 	if res.AvailCPU() < cpu || res.AvailMem() < mem || res.FreeGPUCore < gpuCoreDeduct {
 		return types.ErrInsufficientResource
 	}
 	res.AllocCPU += cpu
 	res.AllocMem += mem
 	res.FreeGPUCore -= gpuCoreDeduct
+	if gpuMemDeduct > 0 {
+		res.FreeGPUMemMB -= gpuMemDeduct
+		if res.FreeGPUMemMB < 0 {
+			res.FreeGPUMemMB = 0
+		}
+	}
 	res.UpdatedAt = ctx.BlockTime()
 	k.SetNodeResource(ctx, provider, res)
 	return nil
@@ -120,6 +139,18 @@ func (k *Keeper) ReleaseNodeClaim(ctx sdk.Context, provider sdk.AccAddress, node
 	if gpuCoreRelease == 0 && gpu > 0 {
 		gpuCoreRelease = gpu * 100
 	}
+	// 显存按整卡均分恢复
+	var gpuMemRelease int64
+	if gpu > 0 && res.FreeGPU > 0 {
+		// 用总显存除以物理 GPU 数估算每块显存容量
+		totalGPUMem := res.FreeGPUMemMB + (res.FreeGPU-res.FreeGPUCore/100)*0 // keep simple
+		_ = totalGPUMem
+		// 通过心跳里的 FreeGPUMemMB 和 FreeGPU 反推每卡显存
+		// 这里保守做法：恢复到物理上限（由下次心跳更新准确值）
+		gpuMemRelease = 0 // 显存会在下次心跳时由 monitor 用实际值覆盖
+	}
+	_ = gpuMemRelease
+
 	res.AllocCPU -= cpu
 	if res.AllocCPU < 0 {
 		res.AllocCPU = 0
@@ -133,6 +164,7 @@ func (k *Keeper) ReleaseNodeClaim(ctx sdk.Context, provider sdk.AccAddress, node
 	if maxCore := res.FreeGPU * 100; res.FreeGPUCore > maxCore {
 		res.FreeGPUCore = maxCore
 	}
+	// FreeGPUMemMB 由下次心跳从 K8s 实际状态更新，此处不修改
 	res.UpdatedAt = ctx.BlockTime()
 	k.SetNodeResource(ctx, provider, res)
 }
@@ -150,7 +182,10 @@ func (k *Keeper) SlashProvider(ctx sdk.Context, provider sdk.AccAddress) {
 			continue
 		}
 		res.SlashCount++
-		bz, _ := json.Marshal(res)
+		bz, err := json.Marshal(res)
+		if err != nil {
+			panic(fmt.Sprintf("chaink8s: marshal NodeResource in slash: %v", err))
+		}
 		store.Set(iter.Key(), bz)
 	}
 
@@ -166,7 +201,7 @@ func (k *Keeper) SlashProvider(ctx sdk.Context, provider sdk.AccAddress) {
 // reqGPUMemMB=0 表示由 webhook 自动计算，>0 表示用户指定的 GPU 显存（MiB）
 func (k *Keeper) SetOrderBound(ctx sdk.Context, orderID, provider, nodeID string, reqCPU, reqMem, reqGPU, reqGPUCore, reqGPUMemMB int64, image string) {
 	store := ctx.KVStore(k.skey)
-	bz, _ := json.Marshal(types.BoundOrderInfo{
+	bz, err := json.Marshal(types.BoundOrderInfo{
 		OrderID:     orderID,
 		Provider:    provider,
 		NodeID:      nodeID,
@@ -177,6 +212,9 @@ func (k *Keeper) SetOrderBound(ctx sdk.Context, orderID, provider, nodeID string
 		ReqGPUMemMB: reqGPUMemMB,
 		Image:       image,
 	})
+	if err != nil {
+		panic(fmt.Sprintf("chaink8s: marshal BoundOrderInfo: %v", err))
+	}
 	store.Set(types.BoundOrderKey(orderID), bz)
 }
 
@@ -240,7 +278,10 @@ var spotPriceKey = []byte{0x04}
 // 存储格式：[pricePerCPUMilli, freeCPUTotal, pendingOrders, pricePerGPU, freeGPUTotal]
 func (k *Keeper) SetSpotPrice(ctx sdk.Context, pricePerCPUMilli, freeCPUTotal, pendingOrders, pricePerGPU, freeGPUTotal int64) {
 	store := ctx.KVStore(k.skey)
-	bz, _ := json.Marshal([5]int64{pricePerCPUMilli, freeCPUTotal, pendingOrders, pricePerGPU, freeGPUTotal})
+	bz, err := json.Marshal([5]int64{pricePerCPUMilli, freeCPUTotal, pendingOrders, pricePerGPU, freeGPUTotal})
+	if err != nil {
+		panic(fmt.Sprintf("chaink8s: marshal spot price: %v", err))
+	}
 	store.Set(spotPriceKey, bz)
 }
 

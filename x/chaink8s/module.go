@@ -227,6 +227,8 @@ func (am AppModule) scheduleOrder(ctx sdk.Context, orderID string, reqCPU, reqMe
 	// reqGPUCore > 0：按百分比扣减 FreeGPUCore（如 40% → -40）
 	// reqGPUCore == 0：按整卡扣减（1 GPU → -100）
 	if err := am.keeper.ApplyNodeClaim(ctx, providerAddr, bestNode.NodeID, reqCPU, reqMem, reqGPU, reqGPUCore); err != nil {
+		ctx.Logger().Error("chaink8s: ApplyNodeClaim failed, skipping order",
+			"order", orderID, "node", bestNode.NodeID, "err", err)
 		return
 	}
 
