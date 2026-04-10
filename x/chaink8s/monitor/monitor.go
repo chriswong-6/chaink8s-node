@@ -205,6 +205,10 @@ func (m *Monitor) Run(ctx context.Context) error {
 	ticker := time.NewTicker(m.cfg.HeartbeatPeriod)
 	defer ticker.Stop()
 
+	// reconcile 每 2 分钟运行一次：补建缺失 Pod，删除孤儿 Pod（订单已取消）
+	reconcileTicker := time.NewTicker(2 * time.Minute)
+	defer reconcileTicker.Stop()
+
 	// 启动对账：补建重启前已调度但 Pod 不存在的工作负载
 	m.reconcileBoundOrders(ctx)
 
@@ -218,6 +222,8 @@ func (m *Monitor) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-reconcileTicker.C:
+			m.reconcileBoundOrders(ctx)
 		case <-ticker.C:
 			m.sendHeartbeat(ctx)
 		case ev, ok := <-blockEvents:
@@ -505,7 +511,32 @@ func (m *Monitor) reconcileBoundOrders(ctx context.Context) {
 		}
 	}
 
-	// 3. 补建缺失的 Pod
+	// 3. 建立链上 bound order 集合（仅本 provider+node）
+	boundSet := make(map[string]bool, len(resp.Orders))
+	for _, order := range resp.Orders {
+		if order.Provider == m.cfg.ProviderAddr && order.NodeID == m.cfg.NodeID {
+			boundSet[order.OrderID] = true
+		}
+	}
+
+	// 4. 删除链上已不存在的孤儿 Pod
+	deleted := 0
+	for _, pod := range pods.Items {
+		orderID, ok := pod.Annotations["ck8s/order-id"]
+		if !ok {
+			continue
+		}
+		if !boundSet[orderID] {
+			log.Printf("INF monitor: reconcile: deleting orphan pod  name=%s  order=%s", pod.Name, orderID)
+			if err := m.k8s.CoreV1().Pods(m.cfg.PodNamespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); err != nil {
+				log.Printf("WRN monitor: reconcile: delete pod %s: %v", pod.Name, err)
+			} else {
+				deleted++
+			}
+		}
+	}
+
+	// 5. 补建缺失的 Pod
 	recreated := 0
 	for _, order := range resp.Orders {
 		if order.Provider != m.cfg.ProviderAddr || order.NodeID != m.cfg.NodeID {
@@ -520,8 +551,8 @@ func (m *Monitor) reconcileBoundOrders(ctx context.Context) {
 		recreated++
 	}
 
-	log.Printf("INF monitor: reconcile done  checked=%d  recreated=%d",
-		len(resp.Orders), recreated)
+	log.Printf("INF monitor: reconcile done  checked=%d  recreated=%d  deleted=%d",
+		len(resp.Orders), recreated, deleted)
 }
 
 // ── Pod deletion ──────────────────────────────────────────────────────────────
