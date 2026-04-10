@@ -24,6 +24,7 @@ import (
 
 	"pkg.akt.dev/node/app"
 	"pkg.akt.dev/node/cmd/akash/cmd/testnetify"
+	ck8scli "pkg.akt.dev/node/x/chaink8s/cli"
 )
 
 // NewRootCmd creates a new root command for akash. It is called once in the
@@ -106,6 +107,21 @@ func initRootCmd(rootCmd *cobra.Command, encodingConfig sdkutil.EncodingConfig) 
 	)
 
 	cli.ServerCmds(rootCmd, home, ac.newApp, ac.appExport, addModuleInitFlags)
+
+	// Attach chaink8s subcommands under `akash chaink8s`
+	ck8sCmd := &cobra.Command{
+		Use:   "chaink8s",
+		Short: "ChainK8s on-chain scheduler commands",
+	}
+	// query subcommands: akash chaink8s nodes / spot-price / bound-orders
+	for _, sub := range ck8scli.GetQueryChaink8sCmd().Commands() {
+		ck8sCmd.AddCommand(sub)
+	}
+	// tx subcommands: akash chaink8s node-heartbeat / node-claim
+	for _, sub := range ck8scli.GetTxChaink8sCmd().Commands() {
+		ck8sCmd.AddCommand(sub)
+	}
+	rootCmd.AddCommand(ck8sCmd)
 
 	rootCmd.SetOut(rootCmd.OutOrStdout())
 	rootCmd.SetErr(rootCmd.ErrOrStderr())
